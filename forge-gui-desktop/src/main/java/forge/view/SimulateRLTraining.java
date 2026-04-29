@@ -6,8 +6,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.lang3.time.StopWatch;
-
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
 import forge.ai.rl.LobbyPlayerRL;
@@ -22,7 +20,6 @@ import forge.game.player.Player;
 import forge.game.player.RegisteredPlayer;
 import forge.localinstance.properties.ForgeConstants;
 import forge.model.FModel;
-import forge.player.GamePlayerUtil;
 
 /**
  * Headless runner for RL training data collection and evaluation.

@@ -5,7 +5,6 @@ import com.google.common.eventbus.Subscribe;
 import forge.ai.rl.decisions.DecisionContext;
 import forge.ai.rl.decisions.DecisionResult;
 import forge.ai.rl.decisions.DecisionType;
-import forge.ai.rl.features.ActionEncoder;
 import forge.ai.rl.features.CardFeatures;
 import forge.ai.rl.features.GameStateEncoder;
 import forge.ai.rl.features.GameStateFeatures;
@@ -22,7 +21,6 @@ import forge.game.phase.PhaseType;
 import forge.game.player.Player;
 import forge.game.player.PlayerView;
 import forge.game.zone.ZoneType;
-import forge.game.GameEntityView;
 
 import java.util.ArrayList;
 import java.util.Collection;

@@ -1,7 +1,6 @@
 package forge.ai.rl;
 
 import forge.LobbyPlayer;
-import forge.ai.rl.decisions.DecisionResult;
 import forge.ai.rl.decisions.DecisionType;
 import forge.ai.rl.features.ActionEncoder;
 import forge.ai.rl.features.CardFeatures;

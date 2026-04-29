@@ -1,6 +1,5 @@
 package forge.ai.rl.training;
 
-import com.google.common.eventbus.Subscribe;
 import forge.ai.rl.RLConfig;
 import forge.ai.rl.features.ActionEncoder;
 import forge.ai.rl.features.CardFeatures;

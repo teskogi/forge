@@ -9,7 +9,6 @@ import forge.ai.rl.features.GameStateFeatures;
 import org.tinylog.Logger;
 
 import java.io.File;
-import java.nio.FloatBuffer;
 import java.util.*;
 
 /**

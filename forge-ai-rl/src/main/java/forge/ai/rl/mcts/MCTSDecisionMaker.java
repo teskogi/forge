@@ -5,17 +5,13 @@ import forge.ai.simulation.GameCopier;
 import forge.ai.simulation.GameSimulator;
 import forge.ai.simulation.GameStateEvaluator;
 import forge.ai.simulation.SimulationController;
-import forge.ai.LobbyPlayerAi;
 import forge.game.*;
 import forge.game.card.Card;
 import forge.game.combat.Combat;
 import forge.game.combat.CombatUtil;
 import forge.game.player.Player;
-import forge.game.player.RegisteredPlayer;
 import forge.game.spellability.SpellAbility;
 import forge.util.MyRandom;
-
-import org.tinylog.Logger;
 
 import java.util.*;
 import java.util.concurrent.*;

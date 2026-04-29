@@ -1,6 +1,5 @@
 package forge.game.player;
 
-import forge.game.Game;
 import forge.game.card.Card;
 import forge.game.card.CardCollectionView;
 import forge.game.combat.Combat;

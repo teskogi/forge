@@ -869,9 +869,7 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
                 cardView = wrapper.getCardView();
             return this.getGui().confirm(cardView, buildQuestion.toString().replaceAll("\n", " "));
         } else {
-            final InputConfirm inp = new InputConfirm(this, buildQuestion.toString(), wrapper);
-            inp.showAndWait();
-            boolean result = inp.getResult();
+            boolean result = InputConfirm.confirm(this, wrapper, buildQuestion.toString());
 
             if (gameRecorder != null) {
                 try {
