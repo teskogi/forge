@@ -82,11 +82,11 @@ public final class Main {
                 break;
 
             case "server":
-                System.out.println("Dedicated server mode.\nNot implemented.");
+                DedicatedServer.start(args);
                 break;
 
             default:
-                System.out.println("Unknown mode.\nKnown mode is 'sim', 'parse' ");
+                System.out.println("Unknown mode.\nKnown modes: 'sim', 'parse', 'server'");
                 break;
         }
 
