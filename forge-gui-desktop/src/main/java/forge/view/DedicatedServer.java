@@ -5,6 +5,7 @@ import forge.gamemodes.match.GameLobby.GameLobbyData;
 import forge.gamemodes.match.HostedMatch;
 import forge.gamemodes.match.LobbySlot;
 import forge.gamemodes.match.LobbySlotType;
+import forge.gamemodes.net.ChatMessage;
 import forge.gamemodes.net.client.ClientGameLobby;
 import forge.gamemodes.net.server.FServerManager;
 import forge.gamemodes.net.server.ServerGameLobby;
@@ -130,7 +131,7 @@ public class DedicatedServer {
         // Set lobby listener for console output
         serverManager.setLobbyListener(new ILobbyListener() {
             @Override
-            public void message(final String source, final String message) {
+            public void message(final String source, final String message, ChatMessage.MessageType type) {
                 if (source != null) {
                     System.out.println("[Chat] " + source + ": " + message);
                 } else {
