@@ -875,7 +875,6 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
             }
             return result;
         }
-        return InputConfirm.confirm(this, wrapper, buildQuestion.toString());
     }
 
     @Override
