@@ -1,5 +1,6 @@
 package forge.view;
 
+
 import forge.game.GameType;
 import forge.gamemodes.match.GameLobby.GameLobbyData;
 import forge.gamemodes.match.HostedMatch;
@@ -18,9 +19,15 @@ import forge.model.FModel;
 import forge.net.HeadlessGuiDesktop;
 import forge.util.BuildInfo;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 /**
@@ -28,22 +35,25 @@ import java.util.Locale;
  * The server itself does not occupy a player slot â all slots are open for
  * remote players. The first player to connect becomes the lobby admin.
  *
- * Usage: java -jar forge.jar server [--port PORT] [--players N] [--mode MODE]
+ * Usage: java -jar forge.jar server [--port PORT] [--webserverport PORT] [--players N] [--mode MODE]
  *
  * Options:
- *   --port PORT      Server port (default: 36743)
- *   --players N      Number of player slots, 2-8 (default: 4)
- *   --mode MODE      Game mode: commander, constructed, oathbreaker, brawl,
- *                    tinyLeaders (default: commander)
+ *   --port PORT                Server port (default: 36743)
+ *   --webpageport PORT         Web page port (default: 8080)
+ *   --players N                Number of player slots, 2-8 (default: 4)
+ *   --mode MODE                Game mode: commander, constructed, oathbreaker, brawl,
+ *                              tinyLeaders (default: commander)
  */
 public class DedicatedServer {
 
     private static final int DEFAULT_PORT = 36743;
     private static final int DEFAULT_PLAYERS = 4;
+    private static final int DEFAULT_WEBPAGE_PORT = 8080;
 
     public static void start(final String[] args) {
         int port = DEFAULT_PORT;
         int players = DEFAULT_PLAYERS;
+        int webpagePort = DEFAULT_WEBPAGE_PORT;
         String mode = "commander";
 
         // Parse arguments
@@ -53,6 +63,13 @@ public class DedicatedServer {
                     port = Integer.parseInt(args[++i]);
                 } catch (NumberFormatException e) {
                     System.err.println("Invalid port number: " + args[i]);
+                    System.exit(1);
+                }
+            } else if ("--webpageport".equals(args[i]) && i + 1 < args.length) {
+                try {
+                    webpagePort = Integer.parseInt(args[++i]);
+                } catch (NumberFormatException e) {
+                    System.err.println("Invalid webpageport number: " + args[i]);
                     System.exit(1);
                 }
             } else if ("--players".equals(args[i]) && i + 1 < args.length) {
@@ -68,7 +85,7 @@ public class DedicatedServer {
                 }
             } else if ("--mode".equals(args[i]) && i + 1 < args.length) {
                 mode = args[++i].toLowerCase(Locale.ROOT);
-            }
+            } 
         }
 
         final GameType gameType = parseGameType(mode);
@@ -84,6 +101,17 @@ public class DedicatedServer {
         System.out.println("Player slots: " + players);
         System.out.println();
 
+        //Create the web page server
+        HttpServer server;
+        try {
+            server = HttpServer.create(new InetSocketAddress(webpagePort), 0);
+            server.createContext("/index", new WebpageHandler(port,players,mode));
+            System.out.println("Server running at http://localhost:"+webpagePort+"/index");
+            server.start();
+        } catch (IOException ex) {
+            System.getLogger(DedicatedServer.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
+        }
+        
         // Initialize headless GUI
         System.out.println("[Server] Initializing headless environment...");
         GuiBase.setInterface(new HeadlessGuiDesktop());
@@ -204,6 +232,81 @@ public class DedicatedServer {
         System.out.println("[Server] Server stopped.");
     }
 
+    static class WebpageHandler implements HttpHandler {
+        int port;
+        int players;
+        String mode;
+        
+        public WebpageHandler(int port,int players,String mode){
+            this.port = port;
+            this.players=players;
+            this.port=port;
+        }
+        
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            String method = exchange.getRequestMethod();
+
+            if (method.equalsIgnoreCase("GET")) {
+                handleGet(exchange);
+            } else if (method.equalsIgnoreCase("POST")) {
+                handlePost(exchange);
+            }
+        }
+
+        private void handleGet(HttpExchange exchange) throws IOException {
+            String response = """
+                    <html>
+                    <body>
+                        <form method="POST" action="/index">
+                              """;
+            response=response+"Port: <input name=\"port\" value=\""+port+"\" />";
+            response=response+"""
+                              Slots: <input name="slots" value="10" />
+                             Mode:
+                            <select name="mode">
+                                <option value="commander">Commander</option>
+                                <option value="constructed">Constructed</option>
+                                <option value="oathbreaker">Oathbreaker</option>
+                                <option value="brawl">Brawl</option>
+                                <option value="tinyLeaders">Tiny Leaders</option>
+                            </select>
+                            <button type="submit">Save and Restart Server</button>
+                        </form>
+                    </body>
+                    </html>
+                    """;
+
+            send(exchange, response);
+        }
+
+        private void handlePost(HttpExchange exchange) throws IOException {
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+                // body looks like: port=123&slots=4&mode=commander
+                String port = "";
+                String mode = "";
+                String slots = "";
+
+                for (String part : body.split("&")) {
+                    if (part.startsWith("port=")) port = part.substring(5);
+                    if (part.startsWith("slots=")) slots = part.substring(6);
+                    if (part.startsWith("mode=")) mode = part.substring(5);
+                }
+
+                String response = "Port: " + port + " | Slots: " + slots + " | Mode: " + mode;
+                send(exchange, response);
+        }
+
+        private void send(HttpExchange exchange, String response) throws IOException {
+            byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
+        }
+    }
+    
     private static GameType parseGameType(final String mode) {
         switch (mode) {
             case "commander":
