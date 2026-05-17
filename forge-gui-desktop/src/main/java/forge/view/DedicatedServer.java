@@ -88,19 +88,6 @@ public class DedicatedServer {
             } 
         }
 
-        final GameType gameType = parseGameType(mode);
-        if (gameType == null) {
-            System.err.println("Unknown game mode: " + mode);
-            System.err.println("Valid modes: commander, constructed, oathbreaker, brawl, tinyLeaders");
-            System.exit(1);
-        }
-
-        System.out.println("=== Forge Dedicated Server ===");
-        System.out.println("Version: " + BuildInfo.getVersionString());
-        System.out.println("Game mode: " + gameType);
-        System.out.println("Player slots: " + players);
-        System.out.println();
-
         //Create the web page server
         HttpServer server;
         try {
@@ -111,7 +98,96 @@ public class DedicatedServer {
         } catch (IOException ex) {
             System.getLogger(DedicatedServer.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
         }
+        startGameServer(port, players, mode);
+    }
+
+    static class WebpageHandler implements HttpHandler {
+        int port;
+        int players;
+        String mode;
         
+        public WebpageHandler(int port,int players,String mode){
+            this.port = port;
+            this.players=players;
+            this.mode=mode;
+        }
+        
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            String method = exchange.getRequestMethod();
+
+            if (method.equalsIgnoreCase("GET")) {
+                handleGet(exchange);
+            } else if (method.equalsIgnoreCase("POST")) {
+                handlePost(exchange);
+            }
+        }
+
+        private void handleGet(HttpExchange exchange) throws IOException {
+            String response = """
+                    <html>
+                    <body>
+                        <form method="POST" action="/index">
+                              """;
+            response=response+"Port: <input name=\"port\" value=\""+port+"\" />";
+            response=response+"Port: <input name=\"slots\" value=\""+players+"\" />";
+            response=response+"""
+                             Mode:
+                            <select name="mode" id="mode">
+                                <option value="commander">Commander</option>
+                                <option value="constructed">Constructed</option>
+                                <option value="oathbreaker">Oathbreaker</option>
+                                <option value="brawl">Brawl</option>
+                                <option value="tinyLeaders">Tiny Leaders</option>
+                            </select>
+                            <script>
+                              """;
+            response=response+"document.getElementById('mode').value = \""+mode+"\";";
+            response=response+"""
+                            </script>
+                            <button type="submit">Save and Restart Server</button>
+                        </form>
+                    </body>
+                    </html>
+                    """;
+
+            send(exchange, response);
+        }
+
+        private void handlePost(HttpExchange exchange) throws IOException {
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+                // body looks like: port=123&slots=4&mode=commander
+                for (String part : body.split("&")) {
+                    if (part.startsWith("port=")) this.port = Integer.parseInt(part.substring(5));
+                    if (part.startsWith("slots=")) this.players = Integer.parseInt(part.substring(6));
+                    if (part.startsWith("mode=")) this.mode = part.substring(5);
+                }
+
+                String response = "Port: " + this.port + " | Slots: " + this.players + " | Mode: " + this.mode;
+                final FServerManager serverManager = FServerManager.getInstance();
+                serverManager.stopServer();
+                startGameServer(port, players, mode);
+                send(exchange, response);
+        }
+
+        private void send(HttpExchange exchange, String response) throws IOException {
+            byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
+        }
+    }
+    
+    private static void startGameServer(int port, int players, String mode) {
+        
+        System.out.println("=== Forge Dedicated Server ===");
+        System.out.println("Version: " + BuildInfo.getVersionString());
+        System.out.println("Game mode: " + mode);
+        System.out.println("Player slots: " + players);
+        System.out.println();
+    
         // Initialize headless GUI
         System.out.println("[Server] Initializing headless environment...");
         GuiBase.setInterface(new HeadlessGuiDesktop());
@@ -152,10 +228,23 @@ public class DedicatedServer {
         }
 
         // Set game mode
-        if (gameType != GameType.Constructed) {
-            lobby.applyVariant(gameType);
+        GameType gameType=null;
+        if ("commander".equals(mode))
+            lobby.applyVariant(GameType.Commander);
+        else if ("constructed".equals(mode)){
+            //gameType = GameType.Constructed;
+        }else if ("oathbreaker".equals(mode))
+            lobby.applyVariant(GameType.Oathbreaker);
+        else if ("brawl".equals(mode))
+            lobby.applyVariant(GameType.Brawl);
+        else if ("tinyleaders".equals(mode))
+            lobby.applyVariant(GameType.TinyLeaders);
+        else {
+            System.err.println("Unknown game mode: " + mode);
+            System.err.println("Valid modes: commander, constructed, oathbreaker, brawl, tinyLeaders");
+            System.exit(1);
         }
-
+        
         // Set lobby listener for console output
         serverManager.setLobbyListener(new ILobbyListener() {
             @Override
@@ -231,99 +320,7 @@ public class DedicatedServer {
         serverManager.stopServer();
         System.out.println("[Server] Server stopped.");
     }
-
-    static class WebpageHandler implements HttpHandler {
-        int port;
-        int players;
-        String mode;
         
-        public WebpageHandler(int port,int players,String mode){
-            this.port = port;
-            this.players=players;
-            this.port=port;
-        }
-        
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            String method = exchange.getRequestMethod();
-
-            if (method.equalsIgnoreCase("GET")) {
-                handleGet(exchange);
-            } else if (method.equalsIgnoreCase("POST")) {
-                handlePost(exchange);
-            }
-        }
-
-        private void handleGet(HttpExchange exchange) throws IOException {
-            String response = """
-                    <html>
-                    <body>
-                        <form method="POST" action="/index">
-                              """;
-            response=response+"Port: <input name=\"port\" value=\""+port+"\" />";
-            response=response+"""
-                              Slots: <input name="slots" value="10" />
-                             Mode:
-                            <select name="mode">
-                                <option value="commander">Commander</option>
-                                <option value="constructed">Constructed</option>
-                                <option value="oathbreaker">Oathbreaker</option>
-                                <option value="brawl">Brawl</option>
-                                <option value="tinyLeaders">Tiny Leaders</option>
-                            </select>
-                            <button type="submit">Save and Restart Server</button>
-                        </form>
-                    </body>
-                    </html>
-                    """;
-
-            send(exchange, response);
-        }
-
-        private void handlePost(HttpExchange exchange) throws IOException {
-            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-
-                // body looks like: port=123&slots=4&mode=commander
-                String port = "";
-                String mode = "";
-                String slots = "";
-
-                for (String part : body.split("&")) {
-                    if (part.startsWith("port=")) port = part.substring(5);
-                    if (part.startsWith("slots=")) slots = part.substring(6);
-                    if (part.startsWith("mode=")) mode = part.substring(5);
-                }
-
-                String response = "Port: " + port + " | Slots: " + slots + " | Mode: " + mode;
-                send(exchange, response);
-        }
-
-        private void send(HttpExchange exchange, String response) throws IOException {
-            byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, bytes.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(bytes);
-            }
-        }
-    }
-    
-    private static GameType parseGameType(final String mode) {
-        switch (mode) {
-            case "commander":
-                return GameType.Commander;
-            case "constructed":
-                return GameType.Constructed;
-            case "oathbreaker":
-                return GameType.Oathbreaker;
-            case "brawl":
-                return GameType.Brawl;
-            case "tinyleaders":
-                return GameType.TinyLeaders;
-            default:
-                return null;
-        }
-    }
-
     private static boolean handleCommand(final String input, final FServerManager server, final ServerGameLobby lobby) {
         final String cmd = input.toLowerCase(Locale.ROOT);
 
