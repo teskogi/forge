@@ -114,6 +114,14 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
     private boolean mayLookAtAllCards = false;
 
     private IGuiGame gui;
+    private forge.game.player.IGameRecorder gameRecorder;
+
+    public void setGameRecorder(forge.game.player.IGameRecorder recorder) {
+        this.gameRecorder = recorder;
+    }
+    public forge.game.player.IGameRecorder getGameRecorder() {
+        return gameRecorder;
+    }
 
     private final YieldController yieldController = new YieldController(this);
 
@@ -507,7 +515,9 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
             sc.setCancelAllowed(isOptional);
             sc.showAndWait();
             endTempShowCards();
-            return new CardCollection(sc.getSelected());
+            CardCollection selected = new CardCollection(sc.getSelected());
+            recordCardSelection(sourceList, selected);
+            return selected;
         }
 
         tempShowCards(sourceList);
@@ -516,9 +526,26 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
                 gameCachechoose.getTrackableKeys(), CardView.get(sa.getHostCard()));
         endTempShowCards();
         gameCachechoose.addToList(views, choices);
+        recordCardSelection(sourceList, choices);
         return choices;
     }
 
+    private void recordCardSelection(CardCollectionView sourceList, CardCollection chosen) {
+        if (gameRecorder == null || sourceList.size() <= 1 || chosen.isEmpty()) return;
+        try {
+            // Record as target-style selection for each chosen card
+            for (Card c : chosen) {
+                List<Object> candidates = new java.util.ArrayList<>(sourceList);
+                int idx = candidates.indexOf(c);
+                if (idx >= 0) {
+                    gameRecorder.recordTargetDecision(candidates, idx);
+                }
+            }
+        } catch (Exception e) {
+            // recording failure should never break gameplay
+        }
+    }
+    
     /**
      * IDs of Contraptions that have been cranked previously, and will default to the "cranked" column next time their
      * sprocket is cranked.
@@ -635,7 +662,22 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
         if (result == null || !gameCacheChoose.containsKey(result)) {
             return null;
         }
-        return gameCacheChoose.get(result);
+        T chosen = gameCacheChoose.get(result);
+
+        // Record target selection
+        if (gameRecorder != null && chosen != null && optionList.size() > 1) {
+            try {
+                List<Object> candidates = new java.util.ArrayList<>(optionList);
+                int selectedIdx = candidates.indexOf(chosen);
+                if (selectedIdx >= 0) {
+                    gameRecorder.recordTargetDecision(candidates, selectedIdx);
+                }
+            } catch (Exception e) {
+                // recording failure should never break gameplay
+            }
+        }
+
+        return chosen;
     }
 
     @Override
@@ -774,9 +816,15 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
         }
 
         // The general case: display the source of the SA in the prompt on mouse over
-        final boolean result = options.isEmpty() ? InputConfirm.confirm(this, sa, message) :
+        boolean result = options.isEmpty() ? InputConfirm.confirm(this, sa, message) :
                 InputConfirm.confirm(this, sa.getHostCard().getView(), sa, message, true, options);
         recordConfirm(sa, result);
+        if (gameRecorder != null) {
+            try {
+                gameRecorder.recordBinaryDecision(result, "confirm_" +
+                        (sa != null && sa.getHostCard() != null ? sa.getHostCard().getName() : "action"));
+            } catch (Exception e) { /* ignore */ }
+        }
         return result;
     }
 
@@ -843,8 +891,16 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
             else
                 cardView = wrapper.getCardView();
             return this.getGui().confirm(cardView, buildQuestion.toString().replaceAll("\n", " "));
+        } else {
+            boolean result = InputConfirm.confirm(this, wrapper, buildQuestion.toString());
+
+            if (gameRecorder != null) {
+                try {
+                    gameRecorder.recordBinaryDecision(result, "trigger_" + regtrig.getHostCard().getName());
+                } catch (Exception e) { /* ignore */ }
+            }
+            return result;
         }
-        return InputConfirm.confirm(this, wrapper, buildQuestion.toString());
     }
 
     @Override
@@ -1516,7 +1572,16 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
         // TODO we should be passing tuckCards into Confirmation Dialog
         final InputConfirmMulligan inp = new InputConfirmMulligan(this, player, mulliganingPlayer);
         inp.showAndWait();
-        return inp.isKeepHand();
+        boolean kept = inp.isKeepHand();
+
+        if (gameRecorder != null && mulliganingPlayer == player) {
+            try {
+                gameRecorder.recordMulligan(player.getCardsIn(forge.game.zone.ZoneType.Hand), kept);
+            } catch (Exception e) {
+                // recording failure should never break gameplay
+            }
+        }
+        return kept;
     }
 
     @Override
@@ -1538,10 +1603,40 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
             // if forced to prompt (must-attack/goad) clear the yield like any other interrupt
             yieldController.applyInterrupt();
         }
+        
+        // Capture pre-attack state for recording
+        List<Card> possibleAttackers = null;
+        if (gameRecorder != null) {
+            try {
+                GameEntity defender = attackingPlayer.getWeakestOpponent();
+                if (defender != null) {
+                    possibleAttackers = new java.util.ArrayList<>();
+                    for (Card c : attackingPlayer.getCreaturesInPlay()) {
+                        if (CombatUtil.canAttack(c, defender)) {
+                            possibleAttackers.add(c);
+                        }
+                    }
+                    if (!possibleAttackers.isEmpty()) {
+                        gameRecorder.capturePreAttack(possibleAttackers);
+                    }
+                }
+            } catch (Exception e) {
+                // recording failure should never break gameplay
+            }
+        }
 
         // This input should not modify combat object itself, but should return user choice
         final InputAttack inpAttack = new InputAttack(this, attackingPlayer, combat);
         inpAttack.showAndWait();
+        
+        // Record the attack decision
+        if (gameRecorder != null && possibleAttackers != null && !possibleAttackers.isEmpty()) {
+            try {
+                gameRecorder.recordAttackDecision(possibleAttackers, combat);
+            } catch (Exception e) {
+                // recording failure should never break gameplay
+            }
+        }
     }
 
     @Override
@@ -1550,6 +1645,23 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
         final InputBlock inpBlock = new InputBlock(this, defender, combat);
         inpBlock.showAndWait();
         getGui().updateAutoPassPrompt();
+        // Record the block decision
+        if (gameRecorder != null) {
+            try {
+                List<Card> possibleBlockers = new java.util.ArrayList<>();
+                for (Card c : defender.getCreaturesInPlay()) {
+                    if (CombatUtil.canBlock(c)) {
+                        possibleBlockers.add(c);
+                    }
+                }
+                List<Card> attackers = new java.util.ArrayList<>(combat.getAttackers());
+                if (!possibleBlockers.isEmpty() && !attackers.isEmpty()) {
+                    gameRecorder.recordBlockDecision(possibleBlockers, attackers, combat);
+                }
+            } catch (Exception e) {
+                // recording failure should never break gameplay
+            }
+        }
     }
 
     private static final ZoneType[] ACTIONABLE_PAYMENT_ZONES = new ZoneType[] {
@@ -1724,11 +1836,35 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
             }
         }
 
+        // Capture pre-decision state for recording
+        // Note: candidate list not available for human players (no AiController).
+        // We capture state pre-decision and record what was chosen.
+        // Candidate features can be reconstructed during preprocessing.
+        if (gameRecorder != null) {
+            try {
+                gameRecorder.capturePrePriority(null);
+            } catch (Exception e) {
+                // recording failure should never break gameplay
+            }
+        }
+        
         netLog.trace("Creating InputPassPriority for player {}", player.getName());
         final InputPassPriority defaultInput = new InputPassPriority(this);
         defaultInput.showAndWait();
         netLog.trace("InputPassPriority returned for player {}, chosenSa={}", player.getName(), defaultInput.getChosenSa());
-        return defaultInput.getChosenSa();
+        List<SpellAbility> result = defaultInput.getChosenSa();
+
+        // Record the priority decision
+        if (gameRecorder != null) {
+            try {
+                SpellAbility chosen = (result != null && !result.isEmpty()) ? result.get(0) : null;
+                gameRecorder.recordPriorityDecision(null, chosen);
+            } catch (Exception e) {
+                // recording failure should never break gameplay
+            }
+        }
+
+        return result;
     }
 
     @Override

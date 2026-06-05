@@ -337,10 +337,46 @@ public class VLobby implements ILobbyView {
         return playerPanels.get(slot);
     }
 
+    /** RL AI supported deck names â must match files in constructed deck folder */
+    private static final java.util.Set<String> RL_SUPPORTED_DECKS = new java.util.HashSet<>(
+            java.util.Arrays.asList("Red Aggro", "Green Stompy", "White Weenie", "Blue Tempo"));
+
+    private void filterToRlDecks(final FDeckChooser deckChooser) {
+        final Iterable<DeckProxy> allDecks = DeckProxy.getAllConstructedDecks();
+        final java.util.List<DeckProxy> rlDecks = new java.util.ArrayList<>();
+        int totalCount = 0;
+        for (DeckProxy dp : allDecks) {
+            totalCount++;
+            if (RL_SUPPORTED_DECKS.contains(dp.getName())) {
+                rlDecks.add(dp);
+                System.out.println("[RL] Found deck: " + dp.getName());
+            }
+        }
+        System.out.println("[RL] filterToRlDecks: " + rlDecks.size() + " RL decks found out of " + totalCount + " total");
+        if (rlDecks.isEmpty()) {
+            System.out.println("[RL] WARNING: No RL decks found! Expected: " + RL_SUPPORTED_DECKS);
+            return;
+        }
+        deckChooser.setFixedDecks(rlDecks);
+    }
+
     @Override
     public void update(final int slot, final LobbySlotType type) {
         final FDeckChooser deckChooser = getDeckChooser(slot);
-        deckChooser.setIsAi(type==LobbySlotType.AI);
+        deckChooser.setIsAi(type==LobbySlotType.AI || type==LobbySlotType.RL_AI);
+
+        // When RL AI is selected, lock this player AND all others to RL decks
+        if (type == LobbySlotType.RL_AI) {
+            filterToRlDecks(deckChooser);
+            // Also filter other players
+            for (int i = 0; i < playerPanels.size(); i++) {
+                if (i != slot) {
+                    filterToRlDecks(getDeckChooser(i));
+                }
+            }
+            return;
+        }
+
         DeckType selectedDeckType = deckChooser.getSelectedDeckType();
         switch (selectedDeckType){
             case STANDARD_CARDGEN_DECK:
@@ -419,7 +455,8 @@ public class VLobby implements ILobbyView {
                 panel.setAiProfile(slot.getAiProfile());
                 panel.update();
 
-                final boolean isSlotAI = slot.getType() == LobbySlotType.AI;
+                final boolean isSlotAI = slot.getType() == LobbySlotType.AI
+                        || slot.getType() == LobbySlotType.RL_AI;
                 if (isNewPanel || fullUpdate) {
                     final FDeckChooser deckChooser = createDeckChooser(lobby.getGameType(), i, isSlotAI);
                     deckChooser.populate();
@@ -433,6 +470,9 @@ public class VLobby implements ILobbyView {
                     }
                 } else {
                     panel.getDeckChooser().setIsAi(isSlotAI);
+                    if (slot.getType() == LobbySlotType.RL_AI) {
+                        filterToRlDecks(panel.getDeckChooser());
+                    }
                 }
                 if (fullUpdate && (type == LobbySlotType.LOCAL || isSlotAI)) {
                     // Deck section selection

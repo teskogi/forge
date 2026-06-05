@@ -99,6 +99,8 @@ public class AiController {
     private boolean useLivingEnd;
     private List<SpellAbility> skipped;
     private boolean timeoutReached;
+    private List<SpellAbility> lastPlayableSpellAbilities;
+    private List<SpellAbility> lastEvaluatedSpellAbilities;
 
     public AiController(final Player computerPlayer, final Game game0) {
         player = computerPlayer;
@@ -129,6 +131,72 @@ public class AiController {
 
     public Player getPlayer() {
         return player;
+    }
+    
+        /**
+     * Returns all mechanically legal spells from the last priority evaluation.
+     * These pass timing and cost checks but NOT the AI's strategic opinion.
+     * This is the full set of actions available to the player right now.
+     * Used by RL as the candidate set (broader than heuristic's choices).
+     */
+    public List<SpellAbility> getLastPlayableSpellAbilities() {
+        return lastPlayableSpellAbilities;
+    }
+
+    /**
+     * Public facade for canPlayAndPayFor — sets up targeting and validates
+     * that a spell can actually be played. Used by RL controller after the
+     * model picks a spell, to let the heuristic handle targeting.
+     * @return true if the spell is ready to play (targets configured)
+     */
+    public boolean canPlayAndPayForFacade(SpellAbility sa) {
+        AiPlayDecision result = canPlayAndPayForFacadeWithReason(sa);
+        return result == AiPlayDecision.WillPlay;
+    }
+
+    /**
+     * Like canPlayAndPayForFacade but returns the AiPlayDecision reason.
+     * Used by RL controller to distinguish mechanical failures from strategic vetoes.
+     */
+    public AiPlayDecision canPlayAndPayForFacadeWithReason(SpellAbility sa) {
+        sa.setActivatingPlayer(player);
+        SpellAbility root = sa.getRootAbility();
+        if (root.isSpell() || root.isTrigger() || root.isReplacementAbility()) {
+            sa.setLastStateBattlefield(game.getLastStateBattlefield());
+            sa.setLastStateGraveyard(game.getLastStateGraveyard());
+        }
+        AiPlayDecision result = canPlayAndPayFor(sa);
+        sa.clearLastState();
+        return result;
+    }
+
+    /**
+     * RL-specific: run the full heuristic evaluation (canPlayAndPayFor) which
+     * sets up targets as a side effect. Return the reason so the RL controller
+     * can decide whether to override strategic vetoes.
+     *
+     * IMPORTANT: This method does NOT set up its own targets. If the heuristic
+     * vetoes and clears targets, the RL controller checks isTargetNumberValid()
+     * and only plays if targets survived the handler's evaluation.
+     *
+     * Strategic vetoes (safe to override if targets are valid):
+     *   CantPlayAi, BadEtbEffects, CurseEffects
+     *
+     * Mechanical failures (never override):
+     *   CantPlaySa, CantAfford, CantAffordX, TargetingFailed, AnotherTime,
+     *   MissingPhaseRestrictions, TimingRestrictions, and all others
+     */
+    public AiPlayDecision canPlayForRL(SpellAbility sa) {
+        return canPlayAndPayForFacadeWithReason(sa);
+    }
+
+    /**
+     * Returns spells that passed the full heuristic evaluation
+     * (canPlayAndPayFor including AI strategic logic).
+     * This is a subset of getLastPlayableSpellAbilities().
+     */
+    public List<SpellAbility> getLastEvaluatedSpellAbilities() {
+        return lastEvaluatedSpellAbilities;
     }
 
     public AiCardMemory getCardMemory() {
@@ -1342,8 +1410,9 @@ public class AiController {
 
     public List<SpellAbility> chooseSpellAbilityToPlay() {
         AiCache.clear();
-        // Reset cached predicted combat, as it may be stale. It will be
-        // re-created if needed and used for any AI logic that needs it.
+        // Reset cached state
+        lastPlayableSpellAbilities = null;
+        lastEvaluatedSpellAbilities = null;
         predictedCombat = null;
         // Also reset predicted combat for next turn here
         predictedCombatNextTurn = null;
@@ -1563,6 +1632,22 @@ public class AiController {
         skipped = saList.stream().filter(SpellAbility::isSkip).collect(Collectors.toList());
         if (!skipped.isEmpty())
             saList.removeAll(skipped);
+        
+        // Cache all mechanically legal spells (timing  cost  valid targets, no AI opinion).
+        // This is the broadest set of actions available to the player right now.
+        List<SpellAbility> mechanicallyPlayable = Lists.newArrayList();
+        for (SpellAbility sa : ComputerUtilAbility.getOriginalAndAltCostAbilities(saList, player)) {
+            if (sa.isManaAbility()) continue;
+            sa.setActivatingPlayer(player);
+            if (!sa.canCastTiming(player)) continue;
+            if (!ComputerUtilCost.canPayCost(sa, player, sa.isTrigger())) continue;
+            // Skip spells that require targets but have none available
+            if (sa.usesTargeting() && sa.getTargetRestrictions() != null
+                    && sa.getTargetRestrictions().getNumCandidates(sa, true) == 0) continue;
+            mechanicallyPlayable.add(sa);
+        }
+        lastPlayableSpellAbilities = mechanicallyPlayable;
+
         //update LivingEndPlayer
         useLivingEnd = IterableUtil.any(player.getZone(ZoneType.Library), CardPredicates.nameEquals("Living End"));
 
@@ -1591,7 +1676,10 @@ public class AiController {
         // in case of infinite loop reset below would not be reached
         timeoutReached = false;
 
+        // Use field so partial results survive timeout
+        lastEvaluatedSpellAbilities = Lists.newArrayList();
         FutureTask<SpellAbility> future = new FutureTask<>(() -> {
+            List<SpellAbility> playable = lastEvaluatedSpellAbilities;
             //avoid ComputerUtil.aiLifeInDanger in loops as it slows down a lot.. call this outside loops will generally be fast...
             boolean isLifeInDanger = useLivingEnd && ComputerUtil.aiLifeInDanger(player, true, 0);
             for (final SpellAbility sa : ComputerUtilAbility.getOriginalAndAltCostAbilities(all, player)) {
@@ -1668,10 +1756,10 @@ public class AiController {
                 if (opinion != AiPlayDecision.WillPlay)
                     continue;
 
-                return sa;
+                playable.add(sa);
             }
 
-            return null;
+            return playable.isEmpty() ? null : playable.get(0);
         });
 
         Thread t = new Thread(future, "Game AI Eval");
