@@ -20,6 +20,7 @@ import forge.game.spellability.SpellAbilityView;
 import forge.game.zone.ZoneType;
 import forge.gamemodes.match.AbstractGuiGame;
 import forge.deck.CardPool;
+import forge.gui.interfaces.IGuiGame;
 import forge.item.PaperCard;
 import forge.localinstance.skin.FSkinProp;
 import forge.player.PlayerZoneUpdate;
@@ -60,9 +61,9 @@ public class HeadlessNetworkGuiGame extends AbstractGuiGame {
     }
 
     @Override
-    public void showCardPromptMessage(PlayerView playerView, String message, CardView card) {
+    public void showPromptMessage(PlayerView playerView, String message, CardView card) {
     }
-
+    
     @Override
     public void updateButtons(PlayerView owner, String label1, String label2, boolean enable1, boolean enable2, boolean focus1) {
     }
@@ -177,6 +178,11 @@ public class HeadlessNetworkGuiGame extends AbstractGuiGame {
     @Override
     public <T> List<T> order(String title, String top, int remainingObjectsMin, int remainingObjectsMax, List<T> sourceChoices, List<T> destChoices, CardView referenceCard, boolean sideboardingMode) {
         return sourceChoices != null ? sourceChoices : Collections.emptyList();
+    }
+    
+    @Override
+    public <T> OrderResult<T> order(String title, String top, int remainingObjectsMin, int remainingObjectsMax, List<T> sourceChoices, List<T> destChoices, CardView referenceCard, boolean sideboardingMode, boolean showRememberCheckbox) {
+        return new IGuiGame.OrderResult<>(sourceChoices != null ? sourceChoices : Collections.emptyList(), false);
     }
 
     @Override
