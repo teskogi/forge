@@ -100,3 +100,5 @@ rl_data/
 
 # Ignore Claude configuration
 .claude
+# EDHREC commander matrix tool intermediates
+forge-gui/tools/build
