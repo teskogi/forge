@@ -131,6 +131,7 @@ public class FControlGameEventHandler extends IGameEventVisitor.Base<Void> {
             if (gameOver) {
                 gameOver = false;
                 if (humanController != null) {
+                    humanController.macros().cancelCurrentMacro();
                     // this will unlock any game threads waiting for inputs to complete
                     humanController.getInputQueue().onGameOver(true);
                 }
@@ -138,6 +139,7 @@ public class FControlGameEventHandler extends IGameEventVisitor.Base<Void> {
             if (gameFinished) {
                 gameFinished = false;
                 if (humanController != null) {
+                    humanController.macros().cancelCurrentMacro();
                     final PlayerView localPlayer = humanController.getLocalPlayerView();
                     humanController.cancelAwaitNextInput(); //ensure "Waiting for opponent..." doesn't appear behind WinLo
                     matchController.showPromptMessage(localPlayer, ""); //clear prompt behind WinLose overlay
@@ -197,9 +199,8 @@ public class FControlGameEventHandler extends IGameEventVisitor.Base<Void> {
         needSaveState = !"dev".equals(ev.phaseDesc());
 
         PlayerView ap = ev.playerTurn();
-        boolean refreshField = ap.getCards(ZoneType.Battlefield) != null &&
-                (ap.getCards(ZoneType.Battlefield).anyMatch(CardView::isToken)
-                || (!"default".equals(FModel.getPreferences().getPref(FPref.UI_GROUP_PERMANENTS)) && ap.getCards(ZoneType.Battlefield).anyMatch(c -> c.getCurrentState().isCreature())));
+        boolean refreshField = ap.getCards(ZoneType.Battlefield).anyMatch(CardView::isToken)
+                || (!"default".equals(FModel.getPreferences().getPref(FPref.UI_GROUP_PERMANENTS)) && ap.getCards(ZoneType.Battlefield).anyMatch(c -> c.getCurrentState().isCreature()));
         if (refreshField) {
             updateZone(ap, ZoneType.Battlefield);
         }

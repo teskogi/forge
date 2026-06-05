@@ -170,7 +170,8 @@ public class WrappedAbility extends Ability {
         String card = getHostCard().toString();
         if (!desc.contains(card) && desc.contains(" this ")) { /* a hack for Evolve and similar that don't have CARDNAME */
                 return card + ": " + desc;
-        } else return desc;
+        }
+        return desc;
     }
 
     @Override
@@ -511,5 +512,10 @@ public class WrappedAbility extends Ability {
 
     public boolean isKeyword(Keyword kw) {
         return sa.isKeyword(kw);
+    }
+
+    @Override
+    public String getName() {
+        return sa.getName();
     }
 }
